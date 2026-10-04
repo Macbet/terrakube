@@ -18,6 +18,7 @@ import {
   KeyOutlined,
   LeftOutlined,
   LockOutlined,
+  MenuOutlined,
   NodeIndexOutlined,
   ProjectOutlined,
   RobotOutlined,
@@ -30,8 +31,8 @@ import {
   TeamOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
-import { Layout, Menu, Tag, theme } from "antd";
-import { useEffect, useState } from "react";
+import { Layout, Menu, Tag } from "antd";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ORGANIZATION_ARCHIVE, ORGANIZATION_NAME } from "@/config/actionTypes";
 import organizationService from "@/modules/organizations/organizationService";
@@ -45,6 +46,10 @@ import logo from "@/domain/Home/white_logo.png";
 import "./AppSidebar.css";
 
 const { Sider } = Layout;
+
+// Same query antd's Sider uses for breakpoint="md"; read synchronously so a phone
+// never paints the desktop sidebar first.
+const MOBILE_QUERY = "(max-width: 767.98px)";
 
 type Props = {
   organizationName: string;
@@ -89,9 +94,14 @@ export default function AppSidebar({
   workspaceManageState,
 }: Props) {
   const [collapsed, setCollapsed] = useState(() => getStoredSidebarCollapsed());
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia?.(MOBILE_QUERY).matches ?? false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const siderRef = useRef<HTMLDivElement>(null);
+  const wasMobileOpen = useRef(false);
   const [defaultSelected, setDefaultSelected] = useState(["organizations"]);
   const location = useLocation();
-  const { token } = theme.useToken();
   const params = location.pathname.split("/");
   const orgIdFromUrl = getOrgIdFromPathname(location.pathname);
   const storedOrgId = sessionStorage.getItem(ORGANIZATION_ARCHIVE);
@@ -100,8 +110,48 @@ export default function AppSidebar({
   const isWorkspaceDetailContext = orgIdFromUrl !== null && params[3] === "workspaces" && isOrgId(params[4]);
   const isWorkspaceSettingsContext = isWorkspaceDetailContext && params[5] === "settings";
   const isUserSettingsContext = params[1] === "settings" && Boolean(params[2]);
-  const canCollapse = !isSettingsContext && !isWorkspaceSettingsContext && !isUserSettingsContext;
+  // Below md the sidebar is an off-canvas drawer, always shown expanded; elsewhere it collapses on every page.
+  const canCollapse = !isMobile;
   const effectiveCollapsed = canCollapse ? collapsed : false;
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname, isMobile]);
+
+  useEffect(() => {
+    if (!mobileOpen) {
+      // Every way of closing (Escape, backdrop, close button, choosing a page) returns focus to the toggle.
+      // Growing to desktop removes the toggle, so focus moves to the first sidebar link instead of body.
+      if (wasMobileOpen.current) {
+        (openButtonRef.current ?? siderRef.current?.querySelector<HTMLElement>("a[href]"))?.focus();
+      }
+      wasMobileOpen.current = false;
+      return;
+    }
+    wasMobileOpen.current = true;
+    // While the drawer is open the top bar and the page behind the backdrop are inert, so Tab,
+    // screen readers and clicks stay in the drawer. The backdrop stays clickable to close it.
+    const sider = siderRef.current;
+    const behind = Array.from(sider?.parentElement?.children ?? []).filter(
+      (element) => element !== sider && !element.classList.contains("app-sidebar-backdrop")
+    );
+    behind.forEach((element) => element.setAttribute("inert", ""));
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      // Leave Escape to an open dropdown or select, or to whatever already handled it.
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (target?.closest(".ant-dropdown, .ant-select-dropdown")) return;
+      setMobileOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      behind.forEach((element) => element.removeAttribute("inert"));
+    };
+  }, [mobileOpen]);
+
+  const closeMobile = () => setMobileOpen(false);
 
   useEffect(() => {
     if (organizationId && !sessionStorage.getItem(ORGANIZATION_NAME)) {
@@ -161,21 +211,21 @@ export default function AppSidebar({
   const settingsGroups = [
     {
       key: "org-settings",
-      label: "Organization Settings",
+      label: "Organization settings",
       items: [
         { key: "general", label: "General", path: "general", icon: <SettingOutlined /> },
         { key: "teams", label: "Teams", path: "teams", icon: <TeamOutlined /> },
         { key: "tags", label: "Tags", path: "tags", icon: <TagsOutlined /> },
-        { key: "variables", label: "Global Variables", path: "variables", icon: <CodeOutlined /> },
-        { key: "collection", label: "Variable Collections", path: "collection", icon: <FolderOutlined /> },
+        { key: "variables", label: "Global variables", path: "variables", icon: <CodeOutlined /> },
+        { key: "collection", label: "Variable collections", path: "collection", icon: <FolderOutlined /> },
       ],
     },
     {
       key: "version-control",
-      label: "Version Control",
+      label: "Version control",
       items: [
-        { key: "vcs", label: "VCS Providers", path: "vcs", icon: <BranchesOutlined /> },
-        { key: "ssh", label: "SSH Keys", path: "ssh", icon: <KeyOutlined /> },
+        { key: "vcs", label: "VCS providers", path: "vcs", icon: <BranchesOutlined /> },
+        { key: "ssh", label: "SSH keys", path: "ssh", icon: <KeyOutlined /> },
       ],
     },
     {
@@ -185,13 +235,13 @@ export default function AppSidebar({
         { key: "agents", label: "Agents", path: "agents", icon: <RobotOutlined /> },
         {
           key: "federated-credentials",
-          label: "Federated Credentials",
+          label: "Federated credentials",
           path: "federated-credentials",
           icon: <SafetyCertificateOutlined />,
         },
         {
           key: "policies",
-          label: "Policy Sets",
+          label: "Policy sets",
           path: "policies",
           icon: <SecurityScanOutlined />,
         },
@@ -206,7 +256,7 @@ export default function AppSidebar({
           key: "actions",
           label: (
             <>
-              Actions <Tag color={token.colorPrimary}>beta</Tag>
+              Actions <Tag className="app-sidebar-beta">beta</Tag>
             </>
           ),
           path: "actions",
@@ -221,12 +271,12 @@ export default function AppSidebar({
     { key: "general", label: "General", path: "general", icon: <SettingOutlined /> },
     { key: "policies", label: "Policies", path: "policies", icon: <SafetyCertificateOutlined /> },
     { key: "locking", label: "Locking", path: "locking", icon: <LockOutlined /> },
-    { key: "sshkey", label: "SSH Key", path: "sshkey", icon: <KeyOutlined /> },
+    { key: "sshkey", label: "SSH key", path: "sshkey", icon: <KeyOutlined /> },
     { key: "webhook", label: "Webhook", path: "webhook", icon: <ApiOutlined /> },
     { key: "notifications", label: "Notifications", path: "notifications", icon: <BellOutlined /> },
-    { key: "state-shared", label: "State Shared", path: "state-shared", icon: <ShareAltOutlined /> },
-    { key: "team-access", label: "Team Access", path: "team-access", icon: <TeamOutlined /> },
-    { key: "advanced", label: "Destruction and Deletion", path: "advanced", icon: <DeleteOutlined /> },
+    { key: "state-shared", label: "State shared", path: "state-shared", icon: <ShareAltOutlined /> },
+    { key: "team-access", label: "Team access", path: "team-access", icon: <TeamOutlined /> },
+    { key: "advanced", label: "Destruction and deletion", path: "advanced", icon: <DeleteOutlined /> },
   ];
 
   const items = isUserSettingsContext
@@ -239,7 +289,7 @@ export default function AppSidebar({
         {
           type: "group" as const,
           key: "account-settings",
-          label: "Account Settings",
+          label: "Account settings",
           children: [
             { key: "tokens", name: "Tokens", icon: <KeyOutlined /> },
             { key: "theme", name: "Theme", icon: <BgColorsOutlined /> },
@@ -247,7 +297,11 @@ export default function AppSidebar({
             key: item.key,
             icon: item.icon,
             label: (
-              <Link to={`/settings/${item.key}`} onClick={() => setDefaultSelected([item.key])}>
+              <Link
+                to={`/settings/${item.key}`}
+                onClick={() => setDefaultSelected([item.key])}
+                aria-current={defaultSelected.includes(item.key) ? "page" : undefined}
+              >
                 {item.name}
               </Link>
             ),
@@ -259,7 +313,7 @@ export default function AppSidebar({
           {
             label: (
               <Link to={workspaceBasePath} onClick={() => handleOrgMenuClick("overview")}>
-                Back to Workspace
+                Back to workspace
               </Link>
             ),
             key: "__back__",
@@ -268,12 +322,16 @@ export default function AppSidebar({
           {
             type: "group" as const,
             key: "workspace-settings",
-            label: "Workspace Settings",
+            label: "Workspace settings",
             children: workspaceSettingsItems.map((item) => ({
               key: item.key,
               icon: item.icon,
               label: (
-                <Link to={`${workspaceBasePath}/settings/${item.path}`} onClick={() => handleOrgMenuClick(item.key)}>
+                <Link
+                  to={`${workspaceBasePath}/settings/${item.path}`}
+                  onClick={() => handleOrgMenuClick(item.key)}
+                  aria-current={defaultSelected.includes(item.key) ? "page" : undefined}
+                >
                   {item.label}
                 </Link>
               ),
@@ -299,7 +357,11 @@ export default function AppSidebar({
                 key: item.key,
                 icon: item.icon,
                 label: (
-                  <Link to={`${orgBasePath}/settings/${item.path}`} onClick={() => handleOrgMenuClick(item.key)}>
+                  <Link
+                    to={`${orgBasePath}/settings/${item.path}`}
+                    onClick={() => handleOrgMenuClick(item.key)}
+                    aria-current={defaultSelected.includes(item.key) ? "page" : undefined}
+                  >
                     {item.label}
                   </Link>
                 ),
@@ -369,7 +431,7 @@ export default function AppSidebar({
                 key: "run-triggers",
                 label: (
                   <Link to={`${workspaceBasePath}/run-triggers`} onClick={() => handleOrgMenuClick("run-triggers")}>
-                    Run Triggers
+                    Run triggers
                   </Link>
                 ),
                 icon: <NodeIndexOutlined />,
@@ -414,70 +476,110 @@ export default function AppSidebar({
   };
 
   return (
-    <Sider
-      theme="dark"
-      width={240}
-      collapsedWidth={64}
-      collapsed={effectiveCollapsed}
-      trigger={null}
-      className="app-sidebar"
-    >
-      <div className="app-sidebar-inner">
-        <div className={`app-sidebar-header ${effectiveCollapsed ? "app-sidebar-header--collapsed" : ""}`}>
+    <>
+      {isMobile && (
+        <header className="app-mobile-bar">
+          <button
+            ref={openButtonRef}
+            type="button"
+            className="app-sidebar-collapse-trigger"
+            aria-label="Open navigation"
+            aria-expanded={mobileOpen}
+            aria-controls="app-sidebar"
+            onClick={() => setMobileOpen(true)}
+          >
+            <MenuOutlined />
+          </button>
           <Link to="/" className="app-sidebar-home-link">
             <img src={logo} alt="Terrakube" className="app-sidebar-logo" />
           </Link>
-          <div className="app-sidebar-header-actions">
+        </header>
+      )}
+      {isMobile && mobileOpen && <div className="app-sidebar-backdrop" aria-hidden="true" onClick={closeMobile} />}
+      <Sider
+        ref={siderRef}
+        id="app-sidebar"
+        theme="dark"
+        width={240}
+        collapsedWidth={64}
+        collapsed={effectiveCollapsed}
+        trigger={null}
+        breakpoint="md"
+        onBreakpoint={setIsMobile}
+        className={`app-sidebar${mobileOpen ? " app-sidebar--open" : ""}`}
+      >
+        <div className="app-sidebar-inner">
+          <div className={`app-sidebar-header ${effectiveCollapsed ? "app-sidebar-header--collapsed" : ""}`}>
+            <Link to="/" className="app-sidebar-home-link">
+              <img src={logo} alt="Terrakube" className="app-sidebar-logo" />
+            </Link>
+            <div className="app-sidebar-header-actions">
+              {!effectiveCollapsed && (
+                <div className="app-sidebar-utility">
+                  <HelpMenu />
+                  <UserMenu />
+                </div>
+              )}
+              {isMobile && (
+                <button
+                  ref={closeButtonRef}
+                  type="button"
+                  className="app-sidebar-collapse-trigger"
+                  aria-label="Close navigation"
+                  onClick={closeMobile}
+                >
+                  <DoubleLeftOutlined />
+                </button>
+              )}
+            </div>
+          </div>
+          {canCollapse && (
+            // A tab on the sidebar's edge: always in the same place, collapsed or not.
+            <button
+              type="button"
+              className="app-sidebar-edge-toggle"
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!collapsed}
+              aria-controls="app-sidebar"
+              onClick={handleToggleCollapsed}
+            >
+              {collapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
+            </button>
+          )}
+          <Menu
+            key={
+              isUserSettingsContext
+                ? "user-settings"
+                : isWorkspaceSettingsContext
+                  ? "workspace-settings"
+                  : isSettingsContext
+                    ? "settings"
+                    : isWorkspaceDetailContext
+                      ? "workspace"
+                      : orgIdFromUrl
+                        ? "org"
+                        : "root"
+            }
+            mode="inline"
+            theme="dark"
+            inlineCollapsed={effectiveCollapsed}
+            selectedKeys={defaultSelected}
+            items={items}
+            onClick={() => setMobileOpen(false)}
+            className="app-sidebar-menu"
+          />
+          <div className="app-sidebar-footer">
             {!effectiveCollapsed && (
-              <div className="app-sidebar-utility">
-                <HelpMenu />
-                <UserMenu />
-              </div>
-            )}
-            {canCollapse && (
-              <button
-                type="button"
-                className="app-sidebar-collapse-trigger"
-                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-                onClick={handleToggleCollapsed}
-              >
-                {collapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
-              </button>
+              <OrganizationSelector
+                organizationName={organizationName}
+                organizations={organizations}
+                onOrgChange={onOrgChange}
+                placement="top"
+              />
             )}
           </div>
         </div>
-        <Menu
-          key={
-            isUserSettingsContext
-              ? "user-settings"
-              : isWorkspaceSettingsContext
-                ? "workspace-settings"
-                : isSettingsContext
-                  ? "settings"
-                  : isWorkspaceDetailContext
-                    ? "workspace"
-                    : orgIdFromUrl
-                      ? "org"
-                      : "root"
-          }
-          mode="inline"
-          theme="dark"
-          inlineCollapsed={effectiveCollapsed}
-          selectedKeys={defaultSelected}
-          items={items}
-          className="app-sidebar-menu"
-        />
-        <div className="app-sidebar-footer">
-          {!effectiveCollapsed && (
-            <OrganizationSelector
-              organizationName={organizationName}
-              organizations={organizations}
-              onOrgChange={onOrgChange}
-              placement="top"
-            />
-          )}
-        </div>
-      </div>
-    </Sider>
+      </Sider>
+    </>
   );
 }

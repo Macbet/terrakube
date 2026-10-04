@@ -32,3 +32,19 @@
 .avatar-hover-effect:hover {
   color: #fff;
 }
+
+/* Phone: the sidebar is a fixed drawer, so stack the mobile top bar above the content. */
+@media (max-width: 767.98px) {
+  .layout.ant-layout.ant-layout-has-sider {
+    flex-direction: column;
+  }
+
+  /* antd sets width: 0 on the content beside a sider (row layout only). */
+  .layout.ant-layout.ant-layout-has-sider > .ant-layout {
+    width: auto;
+  }
+}
+
+.app-footer {
+  text-align: center;
+}

@@ -74,6 +74,13 @@ describe("WorkspaceTable", () => {
     expect(screen.getByText("Policy")).toBeInTheDocument();
   });
 
+  it("keeps the header and rows in one horizontal scroll area so narrow cards scroll instead of clipping", () => {
+    const { container } = renderTable();
+    const scroll = container.querySelector(".workspace-list-scroll")!;
+    expect(scroll).toContainElement(screen.getByText("Name"));
+    expect(scroll).toContainElement(screen.getByText("billing-api-staging"));
+  });
+
   it("renders policy compliance badges in the policy column with links", () => {
     renderTable();
     expect(screen.getByText("Compliant")).toBeInTheDocument();

@@ -71,8 +71,7 @@ function SortableHeader({
     const activate = () => onSortChange(spec.single);
     return (
       <span
-        className="workspace-sortable-header"
-        style={{ fontWeight: active ? 700 : undefined }}
+        className={active ? "workspace-sortable-header workspace-sortable-header--active" : "workspace-sortable-header"}
         role="button"
         tabIndex={0}
         onClick={activate}
@@ -95,8 +94,8 @@ function SortableHeader({
     >
       {label}
       <span className="workspace-sort-carets">
-        <CaretUpOutlined style={{ color: isAsc ? "var(--tk-accent)" : undefined }} />
-        <CaretDownOutlined style={{ color: isDesc ? "var(--tk-accent)" : undefined }} />
+        <CaretUpOutlined className={isAsc ? "workspace-sort-caret--active" : undefined} />
+        <CaretDownOutlined className={isDesc ? "workspace-sort-caret--active" : undefined} />
       </span>
     </span>
   );
@@ -124,7 +123,9 @@ function WorkspaceRow({
         <div className="workspace-name-line1">
           <span
             className="workspace-status-icon"
-            style={{ color: (item.lastStatus && statusColors[item.lastStatus]) || "#8b949e" }}
+            style={
+              { "--workspace-status-color": item.lastStatus && statusColors[item.lastStatus] } as React.CSSProperties
+            }
           >
             {getWorkspaceStatusIcon(item.lastStatus)}
           </span>
@@ -164,7 +165,7 @@ function WorkspaceRow({
       </div>
       <div className="workspace-col-run">
         <ClockCircleOutlined />
-        <span>{relativeTime(item.lastRun) ?? "Never Executed"}</span>
+        <span>{relativeTime(item.lastRun) ?? "Never executed"}</span>
       </div>
       <div className="workspace-col-version">
         <IacTypeLogo type={item.iacType} />
@@ -242,98 +243,103 @@ export default function WorkspaceTable({
 
   return (
     <div className="workspace-list">
-      <div className="workspace-list-header">
-        <div className="workspace-col-name">
-          <SortableHeader
-            label="Name"
-            spec={{ asc: "name_asc", desc: "name_desc" }}
-            sortOption={sortOption}
-            onSortChange={onSortChange}
-          />
-        </div>
-        <div className="workspace-col-status">
-          <SortableHeader
-            label="Status (grouped)"
-            spec={{ single: "status" }}
-            sortOption={sortOption}
-            onSortChange={onSortChange}
-          />
-        </div>
-        <div className="workspace-col-policy">
-          <span>Policy</span>
-        </div>
-        <div className="workspace-col-run">
-          <SortableHeader
-            label="Last run"
-            spec={{ asc: "lastRun_asc", desc: "lastRun_desc" }}
-            sortOption={sortOption}
-            onSortChange={onSortChange}
-          />
-        </div>
-        <div className="workspace-col-version">
-          <SortableHeader
-            label="Version"
-            spec={{ asc: "terraformVersion_asc", desc: "terraformVersion_desc" }}
-            sortOption={sortOption}
-            onSortChange={onSortChange}
-          />
-        </div>
-        <div className="workspace-col-source">
-          <SortableHeader
-            label="Source"
-            spec={{ asc: "source_asc", desc: "source_desc" }}
-            sortOption={sortOption}
-            onSortChange={onSortChange}
-          />
+      <div className="workspace-list-scroll">
+        <div className="workspace-list-rows">
+          <div className="workspace-list-header">
+            <div className="workspace-col-name">
+              <SortableHeader
+                label="Name"
+                spec={{ asc: "name_asc", desc: "name_desc" }}
+                sortOption={sortOption}
+                onSortChange={onSortChange}
+              />
+            </div>
+            <div className="workspace-col-status">
+              <SortableHeader
+                label="Status (grouped)"
+                spec={{ single: "status" }}
+                sortOption={sortOption}
+                onSortChange={onSortChange}
+              />
+            </div>
+            <div className="workspace-col-policy">
+              <span>Policy</span>
+            </div>
+            <div className="workspace-col-run">
+              <SortableHeader
+                label="Last run"
+                spec={{ asc: "lastRun_asc", desc: "lastRun_desc" }}
+                sortOption={sortOption}
+                onSortChange={onSortChange}
+              />
+            </div>
+            <div className="workspace-col-version">
+              <SortableHeader
+                label="Version"
+                spec={{ asc: "terraformVersion_asc", desc: "terraformVersion_desc" }}
+                sortOption={sortOption}
+                onSortChange={onSortChange}
+              />
+            </div>
+            <div className="workspace-col-source">
+              <SortableHeader
+                label="Source"
+                spec={{ asc: "source_asc", desc: "source_desc" }}
+                sortOption={sortOption}
+                onSortChange={onSortChange}
+              />
+            </div>
+          </div>
+
+          {isGrouped
+            ? groups!.map((group) => {
+                const isExpanded = expandedGroups.has(group.key);
+                const visibleItems =
+                  isControlled || isExpanded ? group.items : group.items.slice(0, GROUP_PREVIEW_SIZE);
+                const hiddenCount = group.items.length - visibleItems.length;
+                return (
+                  <div key={group.key}>
+                    <div className="workspace-group-divider">
+                      {group.label}{" "}
+                      <span className="workspace-group-count">
+                        {group.items.length} workspace{group.items.length === 1 ? "" : "s"}
+                        {isControlled ? " on this page" : ""}
+                      </span>
+                    </div>
+                    {visibleItems.map((item) => (
+                      <WorkspaceRow
+                        key={item.id}
+                        item={item}
+                        organizationId={organizationId}
+                        onSelectProject={onSelectProject}
+                        tags={tags}
+                      />
+                    ))}
+                    {!isControlled && group.items.length > GROUP_PREVIEW_SIZE && (
+                      <div
+                        className="workspace-group-show-more"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleGroupExpanded(group.key)}
+                        onKeyDown={(e) => activateOnKey(e, () => toggleGroupExpanded(group.key))}
+                      >
+                        {isExpanded ? "Show less" : `Show ${hiddenCount} more workspace${hiddenCount === 1 ? "" : "s"}`}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            : pagedWorkspaces.map((item) => (
+                <WorkspaceRow
+                  key={item.id}
+                  item={item}
+                  organizationId={organizationId}
+                  onSelectProject={onSelectProject}
+                  tags={tags}
+                />
+              ))}
         </div>
       </div>
-
-      {isGrouped
-        ? groups!.map((group) => {
-            const isExpanded = expandedGroups.has(group.key);
-            const visibleItems = isControlled || isExpanded ? group.items : group.items.slice(0, GROUP_PREVIEW_SIZE);
-            const hiddenCount = group.items.length - visibleItems.length;
-            return (
-              <div key={group.key}>
-                <div className="workspace-group-divider">
-                  {group.label}{" "}
-                  <span className="workspace-group-count">
-                    {group.items.length} workspace{group.items.length === 1 ? "" : "s"}
-                    {isControlled ? " on this page" : ""}
-                  </span>
-                </div>
-                {visibleItems.map((item) => (
-                  <WorkspaceRow
-                    key={item.id}
-                    item={item}
-                    organizationId={organizationId}
-                    onSelectProject={onSelectProject}
-                    tags={tags}
-                  />
-                ))}
-                {!isControlled && group.items.length > GROUP_PREVIEW_SIZE && (
-                  <div
-                    className="workspace-group-show-more"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => toggleGroupExpanded(group.key)}
-                    onKeyDown={(e) => activateOnKey(e, () => toggleGroupExpanded(group.key))}
-                  >
-                    {isExpanded ? "Show less" : `Show ${hiddenCount} more workspace${hiddenCount === 1 ? "" : "s"}`}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        : pagedWorkspaces.map((item) => (
-            <WorkspaceRow
-              key={item.id}
-              item={item}
-              organizationId={organizationId}
-              onSelectProject={onSelectProject}
-              tags={tags}
-            />
-          ))}
 
       {(!isGrouped || isControlled) && (
         <div className="workspace-list-pagination">
